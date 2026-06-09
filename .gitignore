@@ -14,7 +14,8 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Hugging Face / model caches (should never be committed)
+# Hugging Face / model caches and local weights (should never be committed)
 .cache/
+models/
 *.safetensors
 *.bin

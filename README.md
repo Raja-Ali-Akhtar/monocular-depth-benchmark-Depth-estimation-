@@ -64,6 +64,32 @@ python stitch.py
 To use **your own images**, just drop them into the `input/` folder and run
 `compare.py` then `stitch.py` (skip step 1).
 
+### Optional: download models for offline use
+
+By default the models are pulled from the Hugging Face Hub on first run. To save
+local copies (e.g. for offline use), run:
+
+```bash
+python download_models.py   # saves each model into models/<name>/
+```
+
+Then point the pipeline at the local folder:
+
+```python
+pipeline("depth-estimation", model="models/depth_anything_v2_small", device=0)
+```
+
+**Download sizes** (`models/` is gitignored — weights are not committed):
+
+| Model | Folder | Size |
+|---|---|---|
+| Depth Anything V2-Small | `models/depth_anything_v2_small` | ~95 MB |
+| DPT-Hybrid (MiDaS) | `models/dpt_hybrid` | ~468 MB |
+| GLPN-NYU | `models/glpn_nyu` | ~468 MB |
+| ZoeDepth | `models/zoedepth` | ~1.3 GB |
+| DPT-Large (MiDaS) | `models/dpt_large` | ~2.6 GB |
+| **Total** | | **~4.9 GB** |
+
 ## Outputs
 
 | File | Description |
