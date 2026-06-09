@@ -1,0 +1,6 @@
+model,load_s,avg_infer_s,indoor_cats,landscape,person,street
+Depth Anything V2-S,29.5,0.081,0.111,0.105,0.065,0.042
+DPT-Large (MiDaS),434.4,0.175,0.182,0.174,0.174,0.170
+DPT-Hybrid (MiDaS),111.8,0.098,0.107,0.096,0.097,0.090
+ZoeDepth (metric),480.2,0.354,0.353,0.344,0.405,0.313
+GLPN-NYU,58.5,0.100,0.116,0.111,0.101,0.072
