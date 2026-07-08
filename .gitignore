@@ -19,3 +19,8 @@ Thumbs.db
 models/
 *.safetensors
 *.bin
+
+# ONNX models + TensorRT engines (large, regenerable, GPU-specific)
+onnx/
+*.onnx
+*.engine

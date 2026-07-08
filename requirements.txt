@@ -4,3 +4,9 @@ numpy
 matplotlib
 requests
 accelerate
+
+# --- optimization / inference-acceleration (optional) ---
+onnx
+onnxruntime-gpu
+# TensorRT (optional, for the FP16 engine path) — install matched to onnxruntime:
+#   pip install tensorrt-cu12==10.2.0 --extra-index-url https://pypi.nvidia.com
