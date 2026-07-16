@@ -24,3 +24,11 @@ models/
 onnx/
 *.onnx
 *.engine
+
+# videos + large media (local demo assets, downloaded clips)
+*.mp4
+*.gif
+candidates/
+
+# local editor/session config
+.claude/

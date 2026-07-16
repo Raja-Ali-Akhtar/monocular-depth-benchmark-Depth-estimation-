@@ -1,8 +1,12 @@
 # Monocular Depth Estimation — 5-Model Benchmark
 
-Head-to-head comparison of **5 popular monocular depth-estimation models** on the same
-images — comparing both **depth-map quality** and **inference speed (FPS)**, all on a
-single consumer GPU (NVIDIA GTX 1660 Ti, 6 GB) using **PyTorch + Hugging Face Transformers**.
+Benchmark **5 monocular depth-estimation models**, optimize the winner to **4.6× faster**
+on a consumer GPU, then take it to the edge on a **Raspberry Pi 5** — measuring quality at
+every step so no speedup is bought with silent accuracy loss.
+
+1. **[Benchmark](#models-compared)** — 5 models, same images, quality + FPS (GTX 1660 Ti)
+2. **[Optimize](#-optimizing-the-winner--46-faster-inference)** — Depth Anything V2-S: 22.9 → 106.4 FPS (4.6×)
+3. **[Deploy](#-edge-deployment--raspberry-pi-5-cpu-only)** — Pi 5 CPU: INT8 wins on ARM, and where the model breaks
 
 > Monocular depth estimation predicts how far every pixel is from the camera using a
 > **single** image — no stereo rig, no LiDAR. It powers autonomous driving, robotics,
@@ -84,6 +88,63 @@ python bench_trt_sweep.py    # TensorRT-FP16 resolution Pareto -> output/trt_par
 
 ---
 
+## 🍓 Edge deployment — Raspberry Pi 5 (CPU-only)
+
+Same model, no GPU: **Depth Anything V2-S via ONNX Runtime on a Pi 5** (8 GB, Cortex-A76,
+aarch64, 4 threads). No CUDA, no TensorRT — the desktop engine doesn't transfer. Preprocessing
+is reimplemented in numpy/cv2, so the Pi needs **no torch and no transformers**.
+
+![Pi quality cliff](output/pi_quality_cliff.png)
+
+### Measured on the Pi 5
+
+| Input | Model | Latency | FPS | Depth validity (corr vs 294px) |
+|---|---|---|---|---|
+| 294 | fp32 | 426 ms | 2.35 | 1.000 |
+| 294 | INT8 | 286 ms | 3.49 | 0.985 ✅ |
+| 252 | INT8 | 186 ms | 5.37 | 0.981 ✅ |
+| **210** | **INT8** | **120 ms** | **8.36** | **0.987 ✅ ← usable ceiling** |
+| 168 | INT8 | 74 ms | 13.47 | 0.724 ❌ |
+| 126 | INT8 | 43 ms | 23.16 | 0.406 ❌ |
+| 112 | INT8 | 34 ms | 29.16 | −0.061 ❌ (anti-correlated) |
+
+### Two findings worth the trip
+
+**1. INT8 flips sign across hardware.** The *exact same* QDQ INT8 ONNX that **TensorRT refused
+to consume** on the desktop GPU is a **1.47× win** on ARM CPU (286 ms vs 426 ms), at corr 0.985
+and 28 MB instead of 99 MB. Cortex-A76 has `asimddp` (INT8 dot-product), which is why.
+A dead end on one target can be the best lever on another.
+
+**2. The model has a hard quality cliff below ~210px** — and it is **not** a quantization
+artifact: fp32 collapses too (0.987 @210 → 0.724 @168 → −0.061 @112). DINOv2's position-embedding
+interpolation plus the DPT decoder's 4-stage fusion degenerate at low token counts
+(168px = 12×12 tokens vs 37×37 at the 518px training resolution).
+
+### So: is real-time (30 FPS) possible on a Pi 5 CPU?
+
+**No — not with this architecture.** 30 FPS *is* reachable (112px → 29.2 FPS), but only where
+the depth map has already become noise. The honest ceiling with valid depth is
+**210px INT8 → 8.36 FPS**. Closing the remaining 3.6× isn't a tuning problem:
+
+- CPU governor `ondemand` → `performance`: **0%** (it already ramps to 2.4 GHz under load)
+- Unstructured pruning: **0×** on ORT CPU (no sparse kernels)
+- NCNN / XNNPACK: realistically 1.3–1.8× → ~15 FPS, still not 30
+- Real options: an **NPU** (Hailo-8L AI HAT+), a **CNN encoder** (no token cliff), or
+  **prune + distil** (a training project, not an optimization pass)
+
+### Reproduce on a Pi
+```bash
+python export_pi_models.py                      # on PC: export + INT8-quantize 252/210/168/126/112
+scp pi_depth.py pi_sweep.py onnx/pi/*_int8.onnx img.jpg pi@<host>:~/depth-pi/
+
+# on the Pi (venv with onnxruntime, opencv-python-headless, numpy)
+python3 pi_depth.py --image img.jpg --model da2s_210_int8.onnx --runs 10 --threads 4
+python3 pi_sweep.py --dir pi_models --image img.jpg          # full resolution/precision sweep
+python3 pi_obstacle.py --source 0                            # obstacle proximity alert (camera)
+```
+
+---
+
 ## Setup
 
 Requires Python 3.9+ and (optionally) a CUDA GPU.
@@ -150,6 +211,8 @@ pipeline("depth-estimation", model="models/depth_anything_v2_small", device=0)
 | `output/timings.csv` | Load + per-image inference times |
 | `output/optimization_quality.png` | Depth quality vs input resolution |
 | `output/trt_pareto.png` | TensorRT-FP16 speed/quality Pareto |
+| `output/pi_quality_cliff.png` | Pi 5 speed vs depth-validity cliff |
+| `output/pi/` | Depth maps produced on the Pi (fp32 vs INT8) |
 
 ## Project structure
 
@@ -166,7 +229,19 @@ pipeline("depth-estimation", model="models/depth_anything_v2_small", device=0)
 ├── export_onnx.py        # export ONNX (dynamic + fixed-size)
 ├── bench_onnx.py         # PyTorch vs ONNX-CUDA vs TensorRT-FP16
 ├── bench_trt_sweep.py    # TensorRT-FP16 resolution Pareto
-├── optimize_int8.py      # INT8 quantization attempt (documented dead-end)
+├── optimize_int8.py      # INT8 quantization attempt (dead-end on TensorRT / GPU)
+│
+│   # video demo
+├── depth_video.py        # run depth on a video, PyTorch vs TensorRT side-by-side
+├── make_post_video.py    # reformat the demo video for social (vertical + GIF)
+├── make_post_visuals.py  # speedup bar chart + what-worked/didn't card
+│
+│   # Raspberry Pi 5 (edge, CPU-only)
+├── export_pi_models.py   # export + INT8-quantize at 252/210/168/126/112
+├── pi_depth.py           # single-image inference + benchmark on the Pi
+├── pi_sweep.py           # resolution/precision sweep on the Pi
+├── pi_obstacle.py        # obstacle proximity alert (camera / video / image)
+├── plot_pi_cliff.py      # the Pi speed-vs-validity cliff plot
 │
 ├── requirements.txt
 ├── input/                # input images
